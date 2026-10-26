@@ -653,6 +653,8 @@ void queue_pre(const PreOp &op) {
     g_pre.push_back(op);
 }
 
+void submit(WGPUTextureView present_view);
+
 std::uint64_t queue_upload(const std::uint8_t *bytes, std::size_t size, std::uint32_t lead_bits) {
     Image &im = g_image;
     const std::uint64_t bits = static_cast<std::uint64_t>(size) * 8;
@@ -665,7 +667,19 @@ std::uint64_t queue_upload(const std::uint8_t *bytes, std::size_t size, std::uin
     std::uint32_t offset = 0, source = 0;
     if (n >= kCacheMinBytes) {
         const std::uint64_t key = content_key(bytes, n);
-        if (cache_find(key, bytes, n, offset) || (++g_cache_seen[key] >= 2 && cache_insert(key, bytes, n, offset))) source = 0x80000000u;
+        bool cached = cache_find(key, bytes, n, offset);
+        if (!cached && ++g_cache_seen[key] >= 2) {
+            cached = cache_insert(key, bytes, n, offset);
+            // The ring cannot evict its oldest entry while the pending submit reads it. A texture drawn every frame
+            // is read again before the next insert, so without a submit here the cache would take nothing new
+            // once it wraps, and every upload from then on goes through the per-submit buffer.
+            if (!cached && !g_cache_ring.empty() && g_cache_ring.front().used == g_serial) {
+                emit_all();
+                submit(nullptr);
+                cached = cache_insert(key, bytes, n, offset);
+            }
+        }
+        if (cached) source = 0x80000000u;
         if (g_cache_seen.size() > 65536) g_cache_seen.clear();
     }
     if (!source) offset = arena_append(bytes, n);
