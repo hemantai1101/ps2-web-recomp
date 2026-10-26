@@ -2,13 +2,20 @@
 """Serves a web build and a disc image with HTTP range requests.
 
 usage: serve.py <build dir> <disc image> [port] [--host address] [--record <dir for unrecorded VU1 programs>]
+
+It also relays the messages that connect a host page to the guests it invites
+(/room), so a friend can play along from another browser.
 """
 
 import http.server
+import json
 import os
 import re
+import secrets
 import shutil
 import sys
+import threading
+import time
 
 RECORD = None
 if '--record' in sys.argv:
@@ -23,6 +30,11 @@ if '--host' in sys.argv:
 BUILD = os.path.abspath(sys.argv[1])
 DISC = os.path.abspath(sys.argv[2])
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8620
+ROOMS = {}
+ROOMS_CHANGED = threading.Condition()
+ROOM_PATH = re.compile(r'^/room(?:/([A-Z2-9]{6})/([a-z0-9]{1,16}))?$')
+ROOM_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+ROOM_IDLE = 3600
 TYPES = {'.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.data': 'application/octet-stream'}
 
 
@@ -54,6 +66,69 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Cross-Origin-Resource-Policy', 'same-origin')
         self.end_headers()
 
+    def send_json(self, value, status=200):
+        body = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def room_get(self, code, me):
+        match = re.search(r'after=(\d+)', self.path)
+        after = int(match.group(1)) if match else 0
+        deadline = time.time() + 20
+        with ROOMS_CHANGED:
+            while True:
+                room = ROOMS.get(code)
+                if room is None:
+                    self.send_json({'error': 'no such room'}, 404)
+                    return
+                room['seen'] = time.time()
+                inbox = room['inboxes'].setdefault(me, [])
+                left = deadline - time.time()
+                if len(inbox) > after or left <= 0:
+                    messages = inbox[after:]
+                    break
+                ROOMS_CHANGED.wait(left)
+        self.send_json({'messages': messages, 'next': after + len(messages)})
+
+    def do_POST(self):
+        match = ROOM_PATH.match(self.path.split('?', 1)[0])
+        length = int(self.headers.get('Content-Length', '0'))
+        if not match or length > 65536:
+            self.send_error(404 if not match else 413)
+            return
+        body = self.rfile.read(length)
+        code, to = match.groups()
+        with ROOMS_CHANGED:
+            now = time.time()
+            for old in [c for c, r in ROOMS.items() if now - r['seen'] > ROOM_IDLE]:
+                del ROOMS[old]
+            if not code:
+                code = ''.join(secrets.choice(ROOM_LETTERS) for _ in range(6))
+                while code in ROOMS:
+                    code = ''.join(secrets.choice(ROOM_LETTERS) for _ in range(6))
+                ROOMS[code] = {'inboxes': {}, 'seen': now}
+                result = {'room': code}
+            elif code in ROOMS:
+                try:
+                    message = json.loads(body)
+                except ValueError:
+                    message = None
+                if not isinstance(message, dict):
+                    self.send_json({'error': 'bad message'}, 400)
+                    return
+                ROOMS[code]['inboxes'].setdefault(to, []).append(message)
+                ROOMS[code]['seen'] = now
+                ROOMS_CHANGED.notify_all()
+                result = {}
+            else:
+                self.send_json({'error': 'no such room'}, 404)
+                return
+        self.send_json(result)
+
     def do_HEAD(self):
         path = self.target()
         if not path:
@@ -63,6 +138,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.headers_for(path, os.path.getsize(path))
 
     def do_GET(self):
+        match = ROOM_PATH.match(self.path.split('?', 1)[0])
+        if match and match.group(1):
+            self.room_get(*match.groups())
+            return
         path = self.target()
         if not path:
             self.send_error(404)

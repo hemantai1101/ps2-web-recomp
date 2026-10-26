@@ -73,7 +73,7 @@ Set your expectations accordingly: two games have been brought up so far. Anothe
 
 The page needs WebGPU for the GPU renderer. Chrome and Edge have it on Windows and macOS. On Linux it is off by default in Chrome and Chromium: turn on `chrome://flags/#enable-unsafe-webgpu` and `chrome://flags/#enable-vulkan` and restart the browser, as the page tells you when it finds no usable adapter. Without WebGPU the software renderer takes over, which is fine for menus and far too slow for 3D. On laptops with two GPUs, a canvas drawn on the discrete GPU sometimes cannot be shown on the screen; the page tries both adapters and falls back to copying frames through a 2D canvas.
 
-The keyboard maps the face buttons to Z (cross), X (circle), A (square) and S (triangle), the shoulders to Q, W, 1 and 2, start and select to Enter and Backspace, the D-pad to the arrow keys and the left stick to I, J, K and L. Gamepads work through the browser's gamepad API. Their analog triggers reach the game as the DualShock 2's pressure-sensitive L2 and R2, and controllers with motors vibrate when the game asks for it, in browsers that expose vibration (Chrome and Edge do). Phones get on-screen controls, and F toggles fullscreen. The resolution selector reloads the page at the new size, and so does the 4:3/16:9 selector, which tells the game the TV is widescreen the way the PS2's system settings do and shows the picture at that shape. Most games need a widescreen patch or their own menu option to draw for it.
+The keyboard maps the face buttons to Z (cross), X (circle), A (square) and S (triangle), the shoulders to Q, W, 1 and 2, start and select to Enter and Backspace, the D-pad to the arrow keys and the left stick to I, J, K and L. Gamepads work through the browser's gamepad API. Their analog triggers reach the game as the DualShock 2's pressure-sensitive L2 and R2, and controllers with motors vibrate when the game asks for it, in browsers that expose vibration (Chrome and Edge do). Phones get on-screen controls, and F toggles fullscreen. The resolution selector reloads the page at the new size, and so does the 4:3/16:9 selector, which starts at 16:9 and tells the game the TV is widescreen the way the PS2's system settings do and shows the picture at that shape. Most games need a widescreen patch or their own menu option to draw for it.
 
 ## Playing natively
 
@@ -88,6 +88,10 @@ build/native-mygame/ps2run games/mygame/disc/SLUS_123.45 --disc games/mygame/dis
 ## Saves
 
 The page puts a memory card in slot 1 and keeps it in the browser's storage for the address you play from, so progress survives a reload. Games format and use it as they would a real card. **Export card** downloads it as a `.ps2` file in the layout PCSX2 uses, and **Import card** puts such a file back in the slot, so a card can travel between browsers or come from PCSX2. `?nocard` starts with the slot empty.
+
+## Playing together
+
+**Invite** makes a room on the server and copies a link to it. A friend who opens the link sees the game and hears it over WebRTC, and their keyboard, gamepad or touch controls become player 2. Their browser downloads neither the game nor the disc, so a phone can join a game a PC is running. The picture they get is the game's own resolution, compressed. Players on networks that cannot reach each other directly would need a TURN relay, which the page does not set up.
 
 ## Hosting
 

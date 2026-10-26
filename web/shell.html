@@ -10,12 +10,21 @@
   body { display: flex; flex-direction: column; }
   #stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
   canvas { width: 100%; height: 100%; display: block; background: #000; }
+  #remote { display: none; width: 100%; height: 100%; background: #000; object-fit: fill; }
+  body.guest #remote { display: block; }
+  body.guest.frames #remote { display: none; }
+  body.guest.frames #canvas { display: block; }
+  body.guest:not(.frames) #canvas, body.guest #bar .host-only, body.guest #menu .host-only { display: none; }
   #bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 6px 12px; background: #141418; border-top: 1px solid #222; }
   #status { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #stats { font-variant-numeric: tabular-nums; color: #9ad; }
   select { background: #2a3a55; color: #fff; border: 0; padding: 5px 8px; border-radius: 4px; }
   button { background: #2a3a55; color: #fff; border: 0; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
-  #aa-label { display: flex; align-items: center; gap: 6px; color: #9ad; white-space: nowrap; }
+  #aa-label, #stats-label { display: flex; align-items: center; gap: 6px; color: #9ad; white-space: nowrap; }
+  #menu { position: fixed; right: 8px; z-index: 4; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px;
+    background: #141418; border: 1px solid #2a2a33; border-radius: 8px; max-height: 70vh; overflow-y: auto; }
+  #menu[hidden] { display: none; }
+  body.touch #menu button, body.touch #menu select { padding: 8px 12px; font-size: 14px; }
   #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); padding: 16px; }
   #panel { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 520px; text-align: center; }
   #help { margin: 0; line-height: 1.5; color: #e8c37a; }
@@ -23,8 +32,9 @@
   body.touch { overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
   body.touch #bar { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); touch-action: pan-x; scrollbar-width: none; }
   body.touch #bar::-webkit-scrollbar { display: none; }
-  body.touch #bar > * { flex: none; }
-  body.touch #status { max-width: 45vw; }
+  body.touch #bar > button { flex: none; }
+  body.touch #status, body.touch #stats { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.touch #stats { flex: 0 1 auto; }
   body.touch #bar button, body.touch #bar select { padding: 5px 10px; font-size: 12px; }
   body.touch #stage { flex: none; width: 100%; aspect-ratio: 4 / 3; max-height: 60vh; }
   body.touch.wide #stage { aspect-ratio: 16 / 9; }
@@ -88,7 +98,7 @@
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="canvas" tabindex="0"></canvas></div>
+<div id="stage"><canvas id="canvas" tabindex="0"></canvas><video id="remote" playsinline></video></div>
 <div id="touch" class="controls" aria-hidden="true">
   <div class="cluster left">
     <div class="shoulders"><div class="ctl shoulder" data-btn="256">L2</div><div class="ctl shoulder" data-btn="1024">L1</div></div>
@@ -113,28 +123,34 @@
   </div>
 </div>
 <div id="bar"><span id="status">Loading…</span><span id="stats"></span>
-  <select id="scale" aria-label="Resolution" title="Internal resolution, the page reloads to apply it">
+  <button id="invite" class="host-only" type="button" disabled title="Make a room and copy a link that lets a friend watch and play as player 2">Invite</button>
+  <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="menu">Menu ▴</button>
+  <button id="fullscreen" type="button" title="Fullscreen (F or double click)">Fullscreen</button></div>
+<div id="menu" hidden>
+  <select id="scale" class="host-only" aria-label="Resolution" title="Internal resolution, the page reloads to apply it">
     <option value="1">640×512</option>
     <option value="2">1280×1024</option>
     <option value="3">1920×1536</option>
   </select>
-  <select id="aspect" aria-label="Aspect ratio" title="Screen shape the game is told about, the page reloads to apply it">
+  <select id="aspect" class="host-only" aria-label="Aspect ratio" title="Screen shape the game is told about, the page reloads to apply it">
     <option value="4:3">4:3</option>
     <option value="16:9">16:9</option>
   </select>
   <select id="pad" aria-label="Player 1 gamepad" title="Gamepad for player 1, the next connected one is player 2 (press a button on a pad if it is missing)">
     <option value="">Pad: auto</option>
   </select>
-  <button id="save-state" type="button" disabled title="Save the game to this device">Save state</button>
-  <button id="load-state" type="button" disabled title="Load the quick save from this device">Load state</button>
-  <label id="aa-label" title="Smooth jagged edges, applied immediately"><input id="aa" type="checkbox" disabled> Smooth edges</label>
+  <button id="save-state" class="host-only" type="button" disabled title="Save the game to this device">Save state</button>
+  <button id="load-state" class="host-only" type="button" disabled title="Load the quick save from this device">Load state</button>
+  <label id="aa-label" class="host-only" title="Smooth jagged edges, applied immediately"><input id="aa" type="checkbox" disabled> Smooth edges</label>
+  <label id="stats-label"><input id="stats-toggle" type="checkbox"> Show stats</label>
   <button id="controls-toggle" type="button" hidden>Hide controls</button>
-  <button id="export-card" type="button" title="Download the memory card in slot 1 as a .ps2 file">Export card</button>
-  <button id="import-card" type="button" title="Put a .ps2 memory card file in slot 1">Import card</button>
+  <button id="export-card" class="host-only" type="button" title="Download the memory card in slot 1 as a .ps2 file">Export card</button>
+  <button id="import-card" class="host-only" type="button" title="Put a .ps2 memory card file in slot 1">Import card</button>
   <input id="import-file" type="file" accept=".ps2" hidden>
-  <button id="fullscreen" type="button" title="Fullscreen (F or double click)">Fullscreen</button></div>
+</div>
 <button id="exit-fullscreen" type="button">Exit fullscreen</button>
 <div id="overlay"><div id="panel"><p id="help" hidden></p><button id="start" disabled>Loading…</button></div></div>
+<template id="engine">{{{ SCRIPT }}}</template>
 <script>
 const statusEl = document.getElementById('status');
 const CARD_DIR = '/memcard', CARD_FILE = '/memcard/Mcd001.ps2', CARD_BYTES = 8650752;
@@ -200,8 +216,31 @@ importInput.addEventListener('change', async () => {
   storeCard(() => location.reload());
 });
 const statsEl = document.getElementById('stats');
+const statsToggle = document.getElementById('stats-toggle');
+let showStats = !(matchMedia('(pointer: coarse)').matches || /[?&]touch\b/.test(location.search));
+try { const stored = localStorage.getItem('ps2web-stats'); if (stored) showStats = stored === '1'; } catch (e) {}
+statsToggle.checked = showStats;
+statsEl.hidden = !showStats;
+statsToggle.addEventListener('change', () => {
+  showStats = statsToggle.checked;
+  statsEl.hidden = !showStats;
+  try { localStorage.setItem('ps2web-stats', showStats ? '1' : '0'); } catch (e) {}
+});
+const menu = document.getElementById('menu'), menuToggle = document.getElementById('menu-toggle');
+function setMenu(open) {
+  if (open) menu.style.bottom = document.getElementById('bar').offsetHeight + 8 + 'px';
+  menu.hidden = !open;
+  menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  menuToggle.textContent = open ? 'Menu ▾' : 'Menu ▴';
+}
+menuToggle.addEventListener('click', () => setMenu(menu.hidden));
+document.addEventListener('pointerdown', (e) => {
+  if (!menu.hidden && !menu.contains(e.target) && !menuToggle.contains(e.target)) setMenu(false);
+});
 const canvas = document.getElementById('canvas');
 const params = new URLSearchParams(location.search);
+const guestRoom = params.get('join');
+if (guestRoom) document.body.classList.add('guest');
 
 function missingFeatures() {
   const header = [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10];
@@ -220,7 +259,7 @@ function missingFeatures() {
   if (!accepts([0, 0xFD, 0x0C].concat(new Array(16).fill(0), [0x1A, 0x0B]))) missing.push('WebAssembly SIMD');
   return missing;
 }
-const missing = missingFeatures();
+const missing = guestRoom ? [] : missingFeatures();
 
 const touchRoot = document.getElementById('touch'), knob = document.getElementById('knob');
 let touchPad = { buttons: 0, x: 0, y: 0, stick: false };
@@ -292,7 +331,7 @@ let aspect = params.get('aspect');
 if (!aspect) {
   try { aspect = localStorage.getItem('ps2web-aspect'); } catch (e) {}
 }
-aspect = aspect === '16:9' ? '16:9' : '4:3';
+aspect = aspect === '4:3' ? '4:3' : '16:9';
 aspectSelect.value = aspect;
 document.body.classList.toggle('wide', aspect === '16:9');
 aspectSelect.addEventListener('change', () => {
@@ -427,6 +466,7 @@ controlsButton.addEventListener('click', () => {
 });
 
 function fitCanvas() {
+  if (guestRoom) return;
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
   const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
   const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
@@ -617,12 +657,288 @@ padSelect.addEventListener('change', () => {
 window.addEventListener('gamepadconnected', listPads);
 window.addEventListener('gamepaddisconnected', listPads);
 listPads();
-function pollInput() {
+function orderedPads() {
   const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter((pad) => pad);
   const chosen = pads.findIndex((pad) => String(pad.index) === padChoice);
   if (chosen > 0) pads.unshift(pads.splice(chosen, 1)[0]);
+  return pads;
+}
+function pollInput() {
+  const pads = orderedPads();
   pollPlayer(0, pads[0] || null, true);
-  pollPlayer(1, pads[1] || null, false);
+  if (remotePlayer && performance.now() - remoteSeen > 3000) (guestLeaves.get(remotePlayer) || releaseRemote)(remotePlayer);
+  if (!remotePlayer) pollPlayer(1, pads[1] || null, false);
+}
+
+const rtcConfig = { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }] };
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function roomSend(code, to, message) {
+  const r = await fetch('room/' + code + '/' + to, { method: 'POST', body: JSON.stringify(message) });
+  if (!r.ok) throw new Error(r.status === 404 ? 'Room ' + code + ' does not exist any more.' : 'The room server answered ' + r.status + '.');
+}
+async function* roomMessages(code, me) {
+  let after = 0;
+  for (;;) {
+    let r;
+    try {
+      r = await fetch('room/' + code + '/' + me + '?after=' + after, { cache: 'no-store' });
+    } catch (e) {
+      await sleep(2000);
+      continue;
+    }
+    if (r.status === 404) return;
+    if (!r.ok) {
+      await sleep(2000);
+      continue;
+    }
+    const data = await r.json();
+    after = data.next;
+    yield* data.messages;
+  }
+}
+function gathered(pc) {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });
+    setTimeout(resolve, 3000);
+  });
+}
+
+const inviteButton = document.getElementById('invite');
+let room = null, hostStream = null, remotePlayer = null, remoteSeen = 0;
+const guestLeaves = new Map();
+function inviteLink() {
+  const url = new URL(location.href);
+  url.search = '?join=' + room;
+  return url.href;
+}
+function copyInvite() {
+  const link = inviteLink();
+  const copied = navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject(new Error('no clipboard'));
+  copied.then(() => note('Invite link copied: ' + link), () => note('Invite link: ' + link));
+}
+let streamShape = 4 / 3;
+function streamTrack() {
+  if (typeof MediaStreamTrackGenerator !== 'function' || typeof VideoFrame !== 'function') {
+    const track = canvas.captureStream(60).getVideoTracks()[0];
+    track.contentHint = 'motion';
+    streamShape = canvas.width / canvas.height;
+    return track;
+  }
+  const generator = new MediaStreamTrackGenerator({ kind: 'video' });
+  const writer = generator.writable.getWriter();
+  let busy = false;
+  Module.onStreamFrame = (pixels, width, height) => {
+    if (busy) return;
+    busy = true;
+    const frame = new VideoFrame(pixels.slice(), { format: 'RGBA', codedWidth: width, codedHeight: height, timestamp: Math.round(performance.now() * 1000) });
+    writer.write(frame).then(() => { busy = false; }, () => { busy = false; });
+  };
+  Module._ps2web_stream(1);
+  generator.contentHint = 'motion';
+  streamShape = aspect === '16:9' ? 16 / 9 : 4 / 3;
+  return generator;
+}
+inviteButton.addEventListener('click', async () => {
+  if (room) {
+    copyInvite();
+    return;
+  }
+  inviteButton.disabled = true;
+  try {
+    const r = await fetch('room', { method: 'POST' });
+    if (!r.ok) throw new Error('This server cannot make rooms. Serve the page with scripts/serve.py.');
+    room = (await r.json()).room;
+    const sound = audio.createMediaStreamDestination();
+    node.connect(sound);
+    hostStream = new MediaStream([streamTrack(), ...sound.stream.getAudioTracks()]);
+    inviteButton.textContent = 'Room ' + room;
+    inviteButton.title = 'Copy the invite link again';
+    copyInvite();
+    hostRoom(room);
+  } catch (error) {
+    room = null;
+    note(error.message);
+  }
+  inviteButton.disabled = false;
+});
+async function hostRoom(code) {
+  const guests = new Map();
+  for await (const m of roomMessages(code, 'host')) {
+    if (m.type === 'join' && typeof m.from === 'string' && !guests.has(m.from)) acceptGuest(code, m.from, guests).catch((e) => console.warn('[room] ' + e));
+    else if (m.type === 'answer' && guests.has(m.from)) guests.get(m.from).setRemoteDescription({ type: 'answer', sdp: m.sdp }).catch((e) => console.warn('[room] ' + e));
+  }
+  note('Room ' + code + ' has closed.');
+}
+async function acceptGuest(code, id, guests) {
+  const pc = new RTCPeerConnection(rtcConfig);
+  guests.set(id, pc);
+  for (const track of hostStream.getTracks()) pc.addTrack(track, hostStream);
+  const channel = pc.createDataChannel('pad', { ordered: false, maxRetransmits: 0 });
+  const leave = () => {
+    guests.delete(id);
+    guestLeaves.delete(id);
+    pc.close();
+    releaseRemote(id);
+  };
+  guestLeaves.set(id, leave);
+  channel.onmessage = (e) => remoteInput(id, e.data);
+  channel.onclose = leave;
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected') {
+      for (const sender of pc.getSenders()) {
+        if (!sender.track || sender.track.kind !== 'video') continue;
+        const parameters = sender.getParameters();
+        if (!parameters.encodings || !parameters.encodings.length) parameters.encodings = [{}];
+        parameters.encodings[0].maxBitrate = 8000000;
+        parameters.encodings[0].maxFramerate = 60;
+        parameters.degradationPreference = 'maintain-resolution';
+        sender.setParameters(parameters).catch(() => {});
+      }
+    }
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') leave();
+  });
+  await pc.setLocalDescription(await pc.createOffer());
+  await gathered(pc);
+  await roomSend(code, id, { type: 'offer', sdp: pc.localDescription.sdp, shape: streamShape });
+}
+function remoteInput(id, data) {
+  if (remotePlayer && remotePlayer !== id) return;
+  let m;
+  try {
+    m = JSON.parse(data);
+  } catch (e) {
+    return;
+  }
+  remoteSeen = performance.now();
+  if (!remotePlayer) {
+    remotePlayer = id;
+    players[1].plugged = true;
+    Module._ps2web_pad_connected(1, 1);
+    note('Player 2 joined');
+  }
+  Module._ps2web_pad(1, m.b, m.lx, m.ly, m.rx, m.ry);
+  if (Array.isArray(m.p)) Module._ps2web_pressure(1, m.p[0], m.p[1], m.p[2], m.p[3]);
+}
+function releaseRemote(id) {
+  if (remotePlayer !== id) return;
+  remotePlayer = null;
+  Object.assign(players[1], { plugged: false, pad: -1, pressure: '' });
+  Module._ps2web_pad_connected(1, 0);
+  note('Player 2 left');
+}
+
+let guestShape = 4 / 3;
+function fitRemote() {
+  const video = document.body.classList.contains('frames') ? canvas : document.getElementById('remote'), stage = document.getElementById('stage');
+  let width = stage.clientWidth, height = width / guestShape;
+  if (height > stage.clientHeight) {
+    height = stage.clientHeight;
+    width = height * guestShape;
+  }
+  video.style.width = Math.floor(width) + 'px';
+  video.style.height = Math.floor(height) + 'px';
+}
+async function drawFrames(track) {
+  document.body.classList.add('frames');
+  fitRemote();
+  const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+  const context = canvas.getContext('2d', { alpha: false });
+  let image = null, copyFrames = true;
+  for (;;) {
+    const { value: frame, done } = await reader.read();
+    if (done) return;
+    try {
+      const width = frame.displayWidth, height = frame.displayHeight;
+      if (!image || image.width !== width || image.height !== height) {
+        image = new ImageData(width, height);
+        canvas.width = width;
+        canvas.height = height;
+      }
+      if (copyFrames) {
+        try {
+          await frame.copyTo(image.data, { format: 'RGBA', colorSpace: 'srgb' });
+          context.putImageData(image, 0, 0);
+          continue;
+        } catch (e) {
+          copyFrames = false;
+        }
+      }
+      context.drawImage(frame, 0, 0);
+    } catch (e) {
+      console.warn('[room] ' + e);
+    } finally {
+      frame.close();
+    }
+  }
+}
+async function startGuest() {
+  window.addEventListener('resize', fitRemote);
+  statusEl.textContent = 'Joining room ' + guestRoom + '…';
+  const id = Math.random().toString(36).slice(2, 12);
+  const video = document.getElementById('remote');
+  const pc = new RTCPeerConnection(rtcConfig);
+  let channel = null;
+  const sent = { b: 0, lx: 128, ly: 128, rx: 128, ry: 128, p: [-1, -1, -1, -1] };
+  Object.assign(Module, {
+    _ps2web_pad_connected: () => {},
+    _ps2web_pad: (port, b, lx, ly, rx, ry) => Object.assign(sent, { b, lx, ly, rx, ry }),
+    _ps2web_pressure: (port, a, b, c, d) => { sent.p = [a, b, c, d]; },
+    _ps2web_rumble: () => 0,
+  });
+  const sound = new Audio();
+  pc.ontrack = (e) => {
+    if (typeof MediaStreamTrackProcessor === 'function') {
+      if (e.track.kind === 'video') drawFrames(e.track);
+      else {
+        sound.srcObject = new MediaStream([e.track]);
+        sound.play().catch(() => {});
+      }
+      return;
+    }
+    if (video.srcObject === e.streams[0]) return;
+    video.muted = true;
+    video.srcObject = e.streams[0];
+    video.play().catch(() => {});
+    const unmute = () => {
+      video.muted = false;
+      video.play().catch(() => {});
+      window.removeEventListener('pointerdown', unmute, true);
+      window.removeEventListener('keydown', unmute, true);
+    };
+    window.addEventListener('pointerdown', unmute, true);
+    window.addEventListener('keydown', unmute, true);
+  };
+  pc.ondatachannel = (e) => { channel = e.channel; };
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected') statusEl.textContent = 'Playing as player 2 in room ' + guestRoom;
+    else if (pc.connectionState === 'failed') statusEl.textContent = 'Could not reach the host. Your networks may need a relay (TURN) server between them.';
+    else if (pc.connectionState === 'closed' || pc.connectionState === 'disconnected') statusEl.textContent = 'Lost the host.';
+  });
+  const send = () => {
+    pollPlayer(0, orderedPads()[0] || null, true);
+    if (channel && channel.readyState === 'open') channel.send(JSON.stringify(sent));
+    requestAnimationFrame(send);
+  };
+  requestAnimationFrame(send);
+  try {
+    const messages = roomMessages(guestRoom, id);
+    await roomSend(guestRoom, 'host', { type: 'join', from: id });
+    for await (const m of messages) {
+      if (m.type !== 'offer') continue;
+      if (m.shape > 0) guestShape = m.shape;
+      document.body.classList.toggle('wide', guestShape > 1.5);
+      fitRemote();
+      await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
+      await pc.setLocalDescription(await pc.createAnswer());
+      await gathered(pc);
+      await roomSend(guestRoom, 'host', { type: 'answer', from: id, sdp: pc.localDescription.sdp });
+      return;
+    }
+    statusEl.textContent = 'Room ' + guestRoom + ' does not exist any more.';
+  } catch (error) {
+    statusEl.textContent = error.message;
+  }
 }
 
 // some browsers cannot show a canvas drawn by another GPU (hybrid laptops on Linux), so each adapter draws a few test frames first
@@ -821,17 +1137,35 @@ if (missing.length) {
   document.getElementById('start').textContent = 'Unsupported browser';
 }
 
+if (guestRoom) {
+  const start = document.getElementById('start');
+  start.disabled = false;
+  start.textContent = 'Join room ' + guestRoom;
+  statusEl.textContent = 'Invited to room ' + guestRoom;
+}
+
 document.getElementById('start').addEventListener('click', async () => {
   document.getElementById('overlay').remove();
+  if (guestRoom) {
+    startGuest();
+    return;
+  }
   canvas.focus();
   fitCanvas();
   await startAudio();
   statusEl.textContent = 'Running, ' + Module.gpuInfo;
   Module.running = true;
   setStateBusy(false);
+  inviteButton.disabled = false;
   Module.callMain(Module.arguments);
 });
+
+if (!guestRoom) {
+  const engine = document.createElement('script');
+  engine.src = document.getElementById('engine').content.querySelector('script').getAttribute('src');
+  engine.async = true;
+  document.body.appendChild(engine);
+}
 </script>
-{{{ SCRIPT }}}
 </body>
 </html>

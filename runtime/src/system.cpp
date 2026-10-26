@@ -543,7 +543,7 @@ Rendered render_pending(bool surface, const std::function<void(const std::uint32
         if (before_present) before_present();
         if (surface) {
             gs::present(regs);
-            return;
+            if (!copy) return;
         }
         std::uint32_t width = 0, height = 0;
         if (copy && gs::copy_frame(regs, frame, width, height)) copy(frame.data(), width, height);

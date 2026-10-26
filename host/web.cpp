@@ -100,6 +100,10 @@ EM_JS(void, ps2web_frame_done, (), {
 EM_ASYNC_JS(void, ps2web_wait_shown, (), {
     if (Module.shownPending) await new Promise((resolve) => Module.shownWaiters.push(resolve));
 });
+EM_JS(void, ps2web_stream_frame, (const std::uint32_t *rgba, int width, int height), {
+    if (Module.onStreamFrame) Module.onStreamFrame(HEAPU8.subarray(rgba, rgba + width * height * 4), width, height);
+});
+
 EM_JS(void, ps2web_blit, (const std::uint32_t *rgba, int width, int height, int wide), {
     const canvas = Module.canvas;
     if (!Module.blitContext) Module.blitContext = canvas.getContext('2d');
@@ -351,6 +355,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE int ps2web_quick_state(int loading) {
     }) ? 1 : 0;
 }
 
+std::atomic<bool> g_streaming{false};
+
+extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_stream(int on) { g_streaming.store(on != 0); }
+
 extern "C" EMSCRIPTEN_KEEPALIVE void ps2web_video_options(int flags) { ps2::set_video_options(static_cast<std::uint32_t>(flags)); }
 
 extern "C" EMSCRIPTEN_KEEPALIVE double ps2web_gpu_ms() { return ps2::gpu_busy_ms(); }
@@ -449,6 +457,10 @@ int main(int argc, char **argv) {
     const std::function<void(const std::uint32_t *, std::uint32_t, std::uint32_t)> blit = [](const std::uint32_t *rgba, std::uint32_t width, std::uint32_t height) {
         ps2web_blit(rgba, static_cast<int>(width), static_cast<int>(height), ps2::g_options.widescreen ? 1 : 0);
     };
+    const std::function<void(const std::uint32_t *, std::uint32_t, std::uint32_t)> streamed = [copy, &blit](const std::uint32_t *rgba, std::uint32_t width, std::uint32_t height) {
+        if (copy) blit(rgba, width, height);
+        if (g_streaming.load()) ps2web_stream_frame(rgba, static_cast<int>(width), static_cast<int>(height));
+    };
     const std::function<void(const std::uint32_t *, std::uint32_t, std::uint32_t)> none;
     const std::function<void()> wait_shown = [] {
         static int since_skip = 0;
@@ -469,7 +481,7 @@ int main(int argc, char **argv) {
     };
     for (;;) {
         service_disc();
-        const ps2::Rendered rendered = ps2::render_pending(surface, copy ? blit : none, wait_shown, 6.0);
+        const ps2::Rendered rendered = ps2::render_pending(surface, g_streaming.load() ? streamed : copy ? blit : none, wait_shown, 6.0);
         if (rendered == ps2::Rendered::presented) ps2web_frame_done();
         if (rendered != ps2::Rendered::idle) {
             ps2::browser_yield();
