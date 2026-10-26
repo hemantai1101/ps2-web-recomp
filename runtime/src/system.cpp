@@ -17,6 +17,7 @@
 #include "ps2/state.hpp"
 #include "ps2/state_request.hpp"
 #include "ps2/system.hpp"
+#include "ps2/video.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -62,6 +63,8 @@ std::atomic<int> g_state_operation{0};
 std::mutex g_state_mutex;
 std::string g_state_path;
 void (*g_state_complete)(bool, bool) = nullptr;
+
+std::atomic<std::uint32_t> g_video_options{0};
 
 std::uint64_t next_event_time() {
     std::uint64_t t = UINT64_MAX;
@@ -258,6 +261,9 @@ bool request_state_operation(bool loading, const char *path, void (*complete)(bo
     g_state_operation.store(loading ? 2 : 1, std::memory_order_release);
     return true;
 }
+
+void set_video_options(std::uint32_t options) { g_video_options.store(options, std::memory_order_relaxed); }
+std::uint32_t video_options() { return g_video_options.load(std::memory_order_relaxed); }
 
 namespace {
 
