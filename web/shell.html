@@ -116,6 +116,9 @@
     <option value="4:3">4:3</option>
     <option value="16:9">16:9</option>
   </select>
+  <select id="pad" aria-label="Player 1 gamepad" title="Gamepad for player 1, the next connected one is player 2 (press a button on a pad if it is missing)">
+    <option value="">Pad: auto</option>
+  </select>
   <button id="controls-toggle" type="button" hidden>Hide controls</button>
   <button id="export-card" type="button" title="Download the memory card in slot 1 as a .ps2 file">Export card</button>
   <button id="import-card" type="button" title="Put a .ps2 memory card file in slot 1">Import card</button>
@@ -476,8 +479,31 @@ function pollPlayer(port, gamepad, own) {
     if (done && done.catch) done.catch(() => {});
   }
 }
+// which gamepad (by its browser index) is player 1, the next connected one is player 2
+const padSelect = document.getElementById('pad');
+let padChoice = params.get('pad');
+if (padChoice === null) {
+  try { padChoice = localStorage.getItem('ps2web-pad'); } catch (e) {}
+}
+padChoice = padChoice || '';
+function listPads() {
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter((pad) => pad);
+  const options = [['', 'Pad: auto']].concat(pads.map((pad) => [String(pad.index), 'P1: pad ' + (pad.index + 1) + ' ' + pad.id.replace(/\s*\(.*$/, '').slice(0, 24)]));
+  if (padChoice && !pads.some((pad) => String(pad.index) === padChoice)) options.push([padChoice, 'P1: pad ' + (Number(padChoice) + 1) + ' (not connected)']);
+  padSelect.replaceChildren(...options.map(([value, text]) => new Option(text, value)));
+  padSelect.value = padChoice;
+}
+padSelect.addEventListener('change', () => {
+  padChoice = padSelect.value;
+  try { localStorage.setItem('ps2web-pad', padChoice); } catch (e) {}
+});
+window.addEventListener('gamepadconnected', listPads);
+window.addEventListener('gamepaddisconnected', listPads);
+listPads();
 function pollInput() {
   const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter((pad) => pad);
+  const chosen = pads.findIndex((pad) => String(pad.index) === padChoice);
+  if (chosen > 0) pads.unshift(pads.splice(chosen, 1)[0]);
   pollPlayer(0, pads[0] || null, true);
   pollPlayer(1, pads[1] || null, false);
 }
