@@ -101,7 +101,10 @@ void dump_frame() {
 }
 
 void apply_presses() {
-    if (!g_options.presses.empty()) {
+    // Once the last press is over the pad is left alone, so the web page's live input works after a scripted start.
+    std::uint64_t last = 0;
+    for (const Press &p : g_options.presses) last = std::max<std::uint64_t>(last, p.frame + p.frames);
+    if (!g_options.presses.empty() && g_frames <= last) {
         std::uint16_t mask = 0;
         std::uint8_t stick = 0;
         for (const Press &p : g_options.presses)
